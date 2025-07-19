@@ -22,6 +22,7 @@ class Entry
 	protected bool $asIs = false;
 	protected bool $reify;
 	protected mixed $instance = null;
+	protected bool $isRequestScoped = false;
 
 	/** @psalm-var list<Call> */
 	protected array $calls = [];
@@ -144,6 +145,23 @@ class Entry
 	public function set(mixed $instance): void
 	{
 		$this->instance = $instance;
+	}
+
+	public function requestScoped(bool $requestScoped = true): static
+	{
+		$this->isRequestScoped = $requestScoped;
+
+		return $this;
+	}
+
+	public function isRequestScoped(): bool
+	{
+		return $this->isRequestScoped;
+	}
+
+	public function resetInstance(): void
+	{
+		$this->instance = null;
 	}
 
 	protected function negotiateReify(mixed $definition): bool

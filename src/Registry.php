@@ -29,6 +29,11 @@ class Registry implements WireContainer
 	/** @psalm-var array<never, never>|array<non-empty-string, self> */
 	protected array $tags = [];
 
+	protected bool $isFrozen = false;
+
+	/** @psalm-var EntryArray */
+	protected array $frozenEntries = [];
+
 	public function __construct(
 		public readonly bool $autowire = true,
 		?Container $container = null,
@@ -94,6 +99,11 @@ class Registry implements WireContainer
 
 			// Autowiring: $id does not exists as an entry in the registry
 			if ($this->autowire && class_exists($id)) {
+				if ($this->isFrozen) {
+					// In frozen state, autowired entries are request-scoped by default
+					$this->add($id)->requestScoped();
+					return $this->get($id);
+				}
 				return $this->creator->create($id);
 			}
 		} catch (WireException $e) {
@@ -237,6 +247,11 @@ class Registry implements WireContainer
 			if ($this->has($value)) {
 				return $this->get($value);
 			}
+
+			// If it's a string but not a class, return as-is only if asIs is true or it's not a class-like name
+			if ($entry->shouldReturnAsIs() || !str_contains($value, '\\')) {
+				return $value;
+			}
 		}
 
 		if ($value instanceof Closure) {
@@ -259,6 +274,78 @@ class Registry implements WireContainer
 			return $value;
 		}
 
+		// Return scalar values and arrays as-is when asIs is true or for non-string types
+		if ($entry->shouldReturnAsIs() || is_array($value) || is_null($value) || (is_scalar($value) && !is_string($value))) {
+			return $value;
+		}
+
 		throw new NotFoundException('Unresolvable id: ' . (string) $value);
+	}
+
+	public function freeze(): void
+	{
+		if ($this->isFrozen) {
+			return;
+		}
+
+		$this->frozenEntries = [];
+		foreach ($this->entries as $id => $entry) {
+			$this->frozenEntries[$id] = clone $entry;
+		}
+
+		$this->isFrozen = true;
+
+		foreach ($this->tags as $tag) {
+			$tag->freeze();
+		}
+	}
+
+	public function isFrozen(): bool
+	{
+		return $this->isFrozen;
+	}
+
+	public function reset(): void
+	{
+		if (!$this->isFrozen) {
+			throw new Exception\ContainerException('Cannot reset unfrozen container');
+		}
+
+		foreach ($this->entries as $entry) {
+			if ($entry->isRequestScoped()) {
+				$entry->resetInstance();
+			}
+		}
+
+		foreach ($this->tags as $tag) {
+			$tag->reset();
+		}
+	}
+
+	public function cloneForRequest(): self
+	{
+		if (!$this->isFrozen) {
+			throw new Exception\ContainerException('Cannot clone unfrozen container');
+		}
+
+		$clone = new self(
+			$this->autowire,
+			$this->wrappedContainer,
+			$this->tag,
+			$this->parent
+		);
+
+		$clone->isFrozen = true;
+		$clone->frozenEntries = $this->frozenEntries;
+
+		foreach ($this->frozenEntries as $id => $entry) {
+			$clone->entries[$id] = clone $entry;
+		}
+
+		foreach ($this->tags as $tagName => $tag) {
+			$clone->tags[$tagName] = $tag->cloneForRequest();
+		}
+
+		return $clone;
 	}
 }
