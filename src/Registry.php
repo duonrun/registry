@@ -47,6 +47,7 @@ class Registry implements WireContainer
 		$this->creator = new Creator($this);
 	}
 
+	#[\Override]
 	public function has(string $id): bool
 	{
 		return isset($this->entries[$id]) || $this->parent?->has($id) || $this->wrappedContainer?->has($id);
@@ -71,6 +72,7 @@ class Registry implements WireContainer
 		return $this->entries[$id];
 	}
 
+	#[\Override]
 	public function get(string $id): mixed
 	{
 		$entry = $this->entries[$id] ?? null;
@@ -101,6 +103,7 @@ class Registry implements WireContainer
 		throw new NotFoundException('Unresolvable id: ' . $id);
 	}
 
+	#[\Override]
 	public function definition(string $id): mixed
 	{
 		$entry = $this->entries[$id] ?? null;
